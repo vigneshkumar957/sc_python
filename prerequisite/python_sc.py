@@ -1,3 +1,6 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 import argparse
 import json
 import logging
@@ -11,6 +14,7 @@ import torch.optim as optim
 import torch.utils.data
 import torch.utils.data.distributed
 from torch.utils.data import Dataset, DataLoader
+import torchvision
 import torchtext
 import numpy as np
 from PIL import Image
@@ -26,10 +30,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
+
 def _get_train_data_loader(batch_size, trainX, trainY, is_distributed, **kwargs):
-    logger.info("Get train information loader")
+    logger.info("Get train data loader")
     
-    transform_data = Compose([
+    train_transforms = Compose([
         LoadPNG(image_only=True),
         AsChannelFirst(channel_dim=2),
         ScaleIntensity(),
@@ -40,7 +45,7 @@ def _get_train_data_loader(batch_size, trainX, trainY, is_distributed, **kwargs)
         ToTensor()
     ])
     
-    dataset = SkinCancerDataset(trainX, trainY, transform_data)
+    dataset = SkinCancerDataset(trainX, trainY, train_transforms)
     
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset) if is_distributed else None
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=train_sampler is None,
@@ -49,7 +54,7 @@ def _get_train_data_loader(batch_size, trainX, trainY, is_distributed, **kwargs)
 
 def _get_test_data_loader(batch_size, valX, valY, **kwargs):
     
-    transformsval = Compose([
+    val_transforms = Compose([
         LoadPNG(image_only=True),
         AsChannelFirst(channel_dim=2),
         ScaleIntensity(),
@@ -57,7 +62,7 @@ def _get_test_data_loader(batch_size, valX, valY, **kwargs):
         ToTensor()
     ])
     
-    dataset = SkinCancerDataset(valX, valY, transformsval)
+    dataset = SkinCancerDataset(valX, valY, val_transforms)
     
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -189,7 +194,8 @@ def train(args):
     logger.info(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")        
    
     save_model(model, args.model_dir) 
-        
+    
+    #test data:classification report
     model.load_state_dict(torch.load('best_metric_model.pth'))
     model.to(device)
     model.eval()
@@ -236,12 +242,14 @@ def model_fn(model_dir):
     
 def save_model(model, model_dir):
     logger.info("Saving the model.")
-    path = os.path.join(model_dir, 'model.pth')    
+    path = os.path.join(model_dir, 'model.pth')
+    # recommended way from http://pytorch.org/docs/master/notes/serialization.html
     torch.save(model.cpu().state_dict(), path)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
+    # Data and model checkpoints directories
     parser.add_argument('--batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for training (default: 1000)')
     parser.add_argument('--test-batch-size', type=int, default=100, metavar='N',
